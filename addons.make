@@ -1,0 +1,4 @@
+ofxGui
+ofxVectorGraphics
+ofxCv
+ofxGamepad
