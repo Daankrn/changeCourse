@@ -8,17 +8,42 @@ void ofApp::setup(){
     contourFinder.setMaxAreaRadius(200);
     trackingColorMode = TRACK_COLOR_RGB;
     center.set(ofGetWidth()/2, ofGetHeight()/2);
-    
+
+	//int baud = 9600;
+    //serial.setup("/dev/tty.HC-06-DevB", baud); //bluetooth on mac...
+	ofLogLevel(OF_LOG_VERBOSE);
+	wheel = new DiJoyStick();
+	lpDi = 0;
+	noForce = WMAX/2;
+	wForce = noForce; //center force
+	forceEnabled = false;
+	if(SUCCEEDED(DirectInput8Create(GetModuleHandle(0), DIRECTINPUT_VERSION, IID_IDirectInput8, (void**) &lpDi, 0))) {
+		ofLog(OF_LOG_NOTICE, "created direct input");
+			 wheel->enumerate(lpDi);
+			 if(wheel->getEntryCount() > 0){
+				 ofLog(OF_LOG_NOTICE, "wheel connected");
+			 } else{
+				 ofLog(OF_LOG_ERROR,"no wheel connected");
+			 }
+	}
 }
 
 //--------------------------------------------------------------
 void ofApp::update(){
-    cam.update();
+
+    updateController();			//read and write FFwheel
+	//updateRcCarControl();		//write bytes to rc car
+	updateRcCarPosition();		//update position from webcam for track+steering
+	
+	cam.update();
     if(cam.isFrameNew()) {
         threshold = ofMap(mouseX, 0, ofGetWidth(), 0, 255);
         contourFinder.setThreshold(threshold);
         contourFinder.findContours(cam);
     }
+
+    
+
 }
 
 //--------------------------------------------------------------
@@ -38,10 +63,11 @@ void ofApp::draw(){
     
     
     drawHighlightString(ofToString((int) ofGetFrameRate()) + " fps", 10, 20);
-    drawHighlightString(ofToString((int) threshold) + " threshold", 10, 40);
+    drawHighlightString(ofToString((int) wForce) + " wForce", 10, 40);
     drawHighlightString(trackingColorMode == TRACK_COLOR_HSV ? "HSV tracking" : "RGB tracking", 10, 60);
-    drawHighlightString(ofToString((float) distance) + " distance", 10, 80);
-    ofTranslate(8, 95);
+    drawHighlightString(ofToString((int) wAimPos) + " wAimPos", 10, 80);
+	drawHighlightString(ofToString((int) wPos) + " wPos", 10, 100);
+    ofTranslate(8, 125);
     ofFill();
     ofSetColor(0);
     ofRect(-3, -3, 64+6, 64+6);
@@ -51,8 +77,95 @@ void ofApp::draw(){
 }
 
 //--------------------------------------------------------------
-void ofApp::keyPressed(int key){
+void ofApp::updateController(){
 
+	wAimPos = ofMap(mouseX,0, ofGetWidth(),0,WMAX); //temporarily map aimed wheel position to mouse
+	//cout << wAimPos << endl;
+	wheel->update();
+            const DiJoyStick::Entry* e = wheel->getEntry(0);
+            if(e) {
+                const DIJOYSTATE2* js = &e->joystate;
+				//cout << js->lX << endl;
+				//map wheel position from 0 to WMAX
+				wPos = ofMap(js->lX,0,WINMAX,0,WMAX);
+				//cout << wPos << endl;
+				//cout << wAimPos << endl;
+				ofLog(OF_LOG_VERBOSE, "wPos = "+wPos);
+				ofLog(OF_LOG_VERBOSE, "wAimPos = " +wAimPos);
+
+				//function to calculate force for steering:
+				//add max force to steering wheel, should steer crappy
+				int f = ofMap(abs(wAimPos - wPos), 0, 100,10, MAXFORCE,true);
+				if(wPos < wAimPos-WTRESH) //on the left
+				{
+					wForce = noForce - f;
+					//wForce = noForce-MAXFORCE;
+					//steer to right
+				} else if(wPos > wAimPos+WTRESH)//on the right
+				{
+					wForce = noForce+f;
+					//steer left
+				} else {
+					//quite close no need for force steering
+					wForce = noForce;
+				}
+
+				//send forces to wheel
+				if(forceEnabled){
+				wheel->g_nXForce = wheel->SetDeviceForcesXY(wForce,WMAX);
+				}
+            }
+}
+
+//--------------------------------------------------------------
+//updates steering position and speed of RC car (arduino) over
+//bluetooth serial connection
+void ofApp::updateRcCarControl(){
+    
+    //start serial connection by handshake
+    if(!serialStart){
+		inByte = serial.readByte();				//read serial data coming in
+		startSerial();
+	} else {
+		//we have connection, let's steer!
+		serial.writeByte(speed);
+		//TODO add some delimiter
+		serial.writeByte(wPos);
+	}
+}
+
+//--------------------------------------------------------------
+//update car position via webcam tracking
+void ofApp::updateRcCarPosition(){
+	//reads position of RC car via calibrated webcam. no mapping
+	//supposed to happen here. Look @ mapCamToTrack()
+}
+
+//--------------------------------------------------------------
+//uses ofxCv to map camera to track so the position of the car
+//can be translated easily
+void ofApp::mapCamToTrack(){
+	//not quite sure what to use...
+}
+
+//--------------------------------------------------------------
+void ofApp::startSerial(){
+    serial.writeByte('B');
+    if(inByte == 'A'){
+        serial.flush(false, true);
+        cout << "handshake made" << endl;
+        serialStart = true;
+//can start sending speed and steering now.
+    }
+}
+
+//--------------------------------------------------------------
+void ofApp::keyPressed(int key){
+if(key == 'f'){
+	//enable/disable force feedback
+	forceEnabled = !forceEnabled;
+	cout << "forceEnabled " << forceEnabled << endl;
+}
 }
 
 //--------------------------------------------------------------
@@ -95,4 +208,11 @@ void ofApp::gotMessage(ofMessage msg){
 //--------------------------------------------------------------
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
+}
+
+//--------------------------------------------------------------
+void ofApp::printLog(string msg){ 
+	if(logEnabled){
+		cout << msg << endl;
+	}
 }
