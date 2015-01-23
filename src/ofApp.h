@@ -7,6 +7,7 @@
 #define WMAX 200 //maximum steering value we use to calculate
 #define WTRESH 5 //threshold on a scale of WMAX
 #define MAXFORCE 100 //on a scale of WMAX
+#define MINFORCE 25
 #define WINMAX 65535 //wheel input max, from directinput
 #define WINCENTER 32767
 

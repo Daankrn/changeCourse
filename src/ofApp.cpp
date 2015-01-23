@@ -9,14 +9,16 @@ void ofApp::setup(){
     trackingColorMode = TRACK_COLOR_RGB;
     center.set(ofGetWidth()/2, ofGetHeight()/2);
 
-	//int baud = 9600;
-    //serial.setup("/dev/tty.HC-06-DevB", baud); //bluetooth on mac...
+	int baud = 9600;
+	serial.listDevices();
+    serial.setup(2, baud); //bluetooth on mac...
 	ofLogLevel(OF_LOG_VERBOSE);
 	wheel = new DiJoyStick();
 	lpDi = 0;
 	noForce = WMAX/2;
 	wForce = noForce; //center force
 	forceEnabled = false;
+	speed = 0;
 	if(SUCCEEDED(DirectInput8Create(GetModuleHandle(0), DIRECTINPUT_VERSION, IID_IDirectInput8, (void**) &lpDi, 0))) {
 		ofLog(OF_LOG_NOTICE, "created direct input");
 			 wheel->enumerate(lpDi);
@@ -32,7 +34,7 @@ void ofApp::setup(){
 void ofApp::update(){
 
     updateController();			//read and write FFwheel
-	//updateRcCarControl();		//write bytes to rc car
+	updateRcCarControl();		//write bytes to rc car
 	updateRcCarPosition();		//update position from webcam for track+steering
 	
 	cam.update();
@@ -95,7 +97,7 @@ void ofApp::updateController(){
 
 				//function to calculate force for steering:
 				//add max force to steering wheel, should steer crappy
-				int f = ofMap(abs(wAimPos - wPos), 0, 100,10, MAXFORCE,true);
+				int f = ofMap(abs(wAimPos - wPos), 0, 100,MINFORCE, MAXFORCE,true);
 				if(wPos < wAimPos-WTRESH) //on the left
 				{
 					wForce = noForce - f;
@@ -122,16 +124,24 @@ void ofApp::updateController(){
 //bluetooth serial connection
 void ofApp::updateRcCarControl(){
     
+	string msg = "s"+ofToString(speed)+"a"+ofToString(wPos)+"b"+ofToString(1);
+	
+	cout << msg << endl;
+	unsigned char* msguc = new unsigned char[msg.size()];
+	memcpy(msguc, msg.c_str(), msg.size());
+	serial.writeBytes(msguc, msg.size());
+	delete [] msguc;
+
     //start serial connection by handshake
-    if(!serialStart){
+    /*if(!serialStart){
 		inByte = serial.readByte();				//read serial data coming in
 		startSerial();
-	} else {
+	} else {*/
 		//we have connection, let's steer!
-		serial.writeByte(speed);
+		//serial.writeByte(speed);
 		//TODO add some delimiter
-		serial.writeByte(wPos);
-	}
+		//serial.writeByte(wPos);
+	//}
 }
 
 //--------------------------------------------------------------
@@ -165,6 +175,14 @@ if(key == 'f'){
 	//enable/disable force feedback
 	forceEnabled = !forceEnabled;
 	cout << "forceEnabled " << forceEnabled << endl;
+}
+if(key == 's'){
+	speed--;
+	cout << "speed =" << speed << endl;
+}
+if(key == 'S'){
+	speed++;
+	cout << "speed =" << speed << endl;
 }
 }
 
